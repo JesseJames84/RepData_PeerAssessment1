@@ -1,0 +1,206 @@
+---
+title: "RepData_PeerAssessment1"
+author: "JJW"
+date: "8/6/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load packages, results = 'hide'}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(stats)
+library(xtable)
+```
+
+## Loading and preprocessing the data
+
+```{r}
+unzip("activity.zip")
+data <- read.csv("activity.csv")
+## formatting date variable
+data$date <- as.Date(data$date) 
+```
+
+## Mean total number of steps per day
+
+Group the data by date and sum the number of steps on each date.
+
+```{r sum by date}
+data_bydate <- data  %>%
+    group_by(date)%>%
+    summarise_at(vars(steps),list(totalsteps = sum))
+```
+
+Calculate the mean and median total of number of steps per day.
+
+```{r mean and median, results = 'asis'}
+avg <- summarise(data_bydate, mean_steps = mean(totalsteps, 
+      na.rm = TRUE), median_steps = median(totalsteps, na.rm = TRUE))
+
+print(xtable(avg), type = "html")
+
+```
+
+Plot a histogram of total number of steps per day.
+
+```{r histogram}
+hist(data_bydate$totalsteps, breaks = 20, main= NULL,
+     xlab = "Total Steps Per Day" )
+```
+
+## Average daily activity pattern
+
+Group the data by time interval and average the number of steps across all days.
+
+```{r averaged by interval}
+data_byinterval <- na.omit(data)  %>%
+    group_by(interval)%>%
+    summarise_at(vars(steps),list(meansteps = mean))
+```
+
+Plot average number of steps in interval.
+
+```{r plot}
+with(data_byinterval, plot(x = interval, y = meansteps,
+     type = "l", ylab = "mean number of steps", main = NULL))
+
+```
+
+Determine which interval has the highest average number of steps.
+
+```{r max steps, results='asis'}
+max <- top_n(data_byinterval, 1, meansteps) 
+print(xtable(max), type = "html")
+  
+```
+
+## Impute missing values
+
+Calculate total number of observations with missing values.
+
+```{r counting NAs}
+NAs <- is.na(data)
+sum(NAs)
+```
+The strategy for imputing the missing values will be to use the mean number of steps for the five minute interval across all other days.
+
+```{r imputing data}
+library(expss)
+
+n = length(data$steps)
+mat = matrix(rep(0,n*3),ncol = 3)
+data_imputed = data.frame(mat) 
+
+for (i in 1:n){
+    if(is.na(data[i,1])){
+      na = vlookup(data[i,3], data_byinterval, 2, 1)
+      data_imputed[i,1] = na
+      data_imputed[i,3] = data[i,3]
+    }else{
+      data_imputed[i,1] = data[i,1]
+      data_imputed[i,3] = data[i,3]
+    }
+}
+
+colnames(data_imputed) <- colnames(data)
+data_imputed$date <- data$date 
+
+detach("package:expss", unload=TRUE)
+
+```
+
+### Mean total number of steps per day (imputed data)
+
+Group the data by date and sum the number of steps on each date.
+
+```{r sum by date imputed}
+datai_bydate <- data_imputed  %>%
+    group_by(date)%>%
+    summarise_at(vars(steps),list(totalsteps = sum))
+```
+
+Calculate the mean and median total of number of steps per day, and compare to orginal data.
+
+```{r mean and median imputed, results = 'asis'}
+avgi <- summarise(datai_bydate, mean_steps = mean(totalsteps), 
+          median_steps = median(totalsteps))
+avgi <- as.data.frame(avgi)
+rownames(avgi) = "imputed data"
+avgo <- as.data.frame(avg)
+rownames(avgo) = "original data"
+avgt <- bind_rows(avgi, avgo)
+print(xtable(avgt), type = "html")
+```
+
+Compared to the orignal data, the data set with imputed observations has the same mean and a slightly higher median.
+
+
+Plot a histogram of total number of steps per day, and compare to original data.
+
+```{r histogram imputed}
+
+hist(datai_bydate$totalsteps, breaks = 20, main= "Imputed Data",
+     xlab = "Total Steps Per Day" )
+
+hist(data_bydate$totalsteps, breaks = 20, main= "Original Data",
+     xlab = "Total Steps Per Day" )
+```
+
+The overall shape of the histograms of the two datasets did not change significantly, except that there are now more observations around the average.   
+
+## Activity patterns between weekdays and weekends
+
+Adding a new variable to denote weekday vs weekend.
+
+```{r add day variable}
+data_imputed_wkd <- data_imputed %>%
+    mutate(day = ifelse(weekdays(data_imputed$date) == "Saturday" |
+                          weekdays(data_imputed$date) == "Saturday",
+                        "weekend", "weekday"))
+
+data_imputed_wkd$day <- as.factor(data_imputed_wkd$day)
+```
+
+Group the data by day and time interval and average the number of steps across all days.
+
+```{r averaged by interval weekday imputed}
+data_byintervalwkd <- data_imputed_wkd  %>%
+    group_by(day) %>%
+    group_by(interval, .add = TRUE)%>%
+    summarise_at(vars(steps),list(meansteps = mean))
+```
+
+
+Plot time series comparing weekday and weekend
+
+```{r panel plot}
+ggplot(data = data_byintervalwkd, aes(x = interval, y = meansteps)) + 
+  geom_line(color = "steelblue", size = 1) +
+  labs(title = "Steps per interval: weekday vs weekend", 
+       y = "mean number of steps", x = "interval") +
+  facet_grid(day~.)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
